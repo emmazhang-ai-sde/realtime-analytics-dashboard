@@ -16,6 +16,7 @@ const DIM_COLORS = [
   "var(--series-2)", "var(--series-1)", "var(--series-4)", "var(--series-3)",
   "var(--series-5)", "var(--series-6)", "var(--series-7)", "var(--series-8)",
 ];
+const SCROLL_KEY = "realtime-dashboard-scroll-y";
 
 function dimColor(key) {
   if (key === "bot") return "var(--series-4)";
@@ -29,6 +30,67 @@ function useRealtimeMode() {
   const [mode, setMode] = useState(null);
   useEffect(() => { transport().then((c) => setMode(c.realtime)); }, []);
   return mode;
+}
+
+function useScrollRestoration() {
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const key = `${SCROLL_KEY}:${window.location.pathname}`;
+    const readSaved = () => {
+      try {
+        const y = Number(sessionStorage.getItem(key) || window.history.state?.[key]);
+        return Number.isFinite(y) && y > 0 ? y : 0;
+      } catch {
+        const y = Number(window.history.state?.[key]);
+        return Number.isFinite(y) && y > 0 ? y : 0;
+      }
+    };
+    const writeSaved = (y) => {
+      const nextY = Math.round(y);
+      try {
+        sessionStorage.setItem(key, String(nextY));
+      } catch {
+        // The history fallback still preserves the position for this tab.
+      }
+      window.history.replaceState({ ...(window.history.state || {}), [key]: nextY }, "", window.location.href);
+    };
+    const savedY = readSaved();
+    const restore = () => {
+      if (savedY > 0) window.scrollTo(0, savedY);
+    };
+    const save = () => writeSaved(window.scrollY);
+
+    if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
+    let restoring = savedY > 0;
+    const timers = [0, 80, 220, 500, 1000, 1800].map((delay) => setTimeout(restore, delay));
+    const unlockTimer = setTimeout(() => {
+      restoring = false;
+      save();
+    }, 1900);
+
+    let queued = false;
+    const onScroll = () => {
+      if (restoring || queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        save();
+        queued = false;
+      });
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("pagehide", save);
+    window.addEventListener("beforeunload", save);
+
+    return () => {
+      timers.forEach(clearTimeout);
+      clearTimeout(unlockTimer);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("pagehide", save);
+      window.removeEventListener("beforeunload", save);
+    };
+  }, []);
 }
 
 function Kpi({ label, value, unit, hint }) {
@@ -119,6 +181,7 @@ function Pipeline({ mode, latency }) {
 export default function App() {
   const source = SOURCE;
   const mode = useRealtimeMode();
+  useScrollRestoration();
   const [howOpen, setHowOpen] = useState(false);
   const cfg = SOURCES[source];
   const { status, summary, series, breakdown, dims, feed, latency } = useLiveStream(source);
