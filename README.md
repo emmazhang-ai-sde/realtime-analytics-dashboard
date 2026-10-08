@@ -10,6 +10,8 @@ messy live data, keeping queries fast as the database grows, pushing updates to
 many connected users, and deploying the same app in local, serverless, and
 Kubernetes environments.
 
+![Real-Time Analytics Dashboard showing live Wikipedia metrics and the data pipeline](docs/images/dashboard-screenshot.png)
+
 The project currently tracks three streams:
 
 | Stream | Source | Used for |
